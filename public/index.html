@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="description" content="Self-hosted reverse geocoding on OpenStreetMap and PostGIS." />
+  <title>Origin - Reverse Geocoding</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111418;
+    --surface: #181c21;
+    --inset: #0e1114;
+    --border: #272d35;
+    --border-strong: #3a424d;
+    --text: #e6e9ed;
+    --muted: #98a2ad;
+    --accent: #f0a04b;
+    --accent-hover: #f5b26a;
+    --on-accent: #1b1206;
+    --error: #f87171;
+    --code-key: #98a2ad;
+    --code-string: #f0b46a;
+    --code-number: #7cb7ff;
+    --radius: 8px;
+    --radius-sm: 6px;
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+
+
+  *, *::before, *::after { box-sizing: border-box; }
+  * { margin: 0; }
+  [hidden] { display: none !important; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; }
+  code, pre { font-family: var(--font-mono); }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 3rem 1.25rem 5rem;
+  }
+
+  .header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .title {
+    font-size: 1.75rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+
+
+  .link-button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2rem;
+    padding: 0 0.875rem;
+    font: inherit;
+    font-size: 0.875rem;
+    color: var(--text);
+    background: none;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+
+  .link-button:hover { background: var(--surface); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+  }
+
+  .card + .card { margin-top: 1rem; }
+
+  .card-title {
+    font-size: 1.0625rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+  }
+
+  .card-text {
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+
+  .card-text code,
+  .endpoint-desc code {
+    font-size: 0.875em;
+    padding: 0.1em 0.35em;
+    background: var(--inset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+
+  .segmented {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    margin-bottom: 1.25rem;
+    background: var(--inset);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .segment {
+    flex: 1;
+    min-height: 2.25rem;
+    padding: 0 0.5rem;
+    font: inherit;
+    font-size: 0.875rem;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: color 0.15s, background-color 0.15s;
+  }
+
+  .segment:hover { color: var(--text); }
+
+  .segment[aria-selected="true"] {
+    color: var(--text);
+    background: var(--surface);
+    box-shadow: 0 0 0 1px var(--border-strong);
+  }
+
+  .field-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .input {
+    flex: 1;
+    min-width: 0;
+    height: 2.75rem;
+    padding: 0 0.875rem;
+    font-family: var(--font-mono);
+    font-size: 0.9375rem;
+    color: var(--text);
+    background: var(--inset);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    transition: border-color 0.15s;
+  }
+
+  .input::placeholder { color: var(--muted); }
+
+  .input:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+
+  .button-primary {
+    height: 2.75rem;
+    padding: 0 1.25rem;
+    font: inherit;
+    font-weight: 600;
+    color: var(--on-accent);
+    background: var(--accent);
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+
+  .button-primary:hover { background: var(--accent-hover); }
+
+  .button-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .hint {
+    min-height: 1.25rem;
+    margin: 0.5rem 0 1rem;
+    font-size: 0.8125rem;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+
+  .hint code { font-size: 0.8125rem; }
+  .hint.bad { color: var(--error); }
+
+  .result-box {
+    min-height: 5rem;
+    padding: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--muted);
+    white-space: pre;
+    overflow-x: auto;
+    background: var(--inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .result-box.success { color: var(--text); }
+
+  .result-box.fail {
+    color: var(--error);
+    border-color: color-mix(in srgb, var(--error) 45%, var(--border));
+  }
+
+  .result-box.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .result-box .key,
+  .result-box .punct { color: var(--code-key); }
+  .result-box .str { color: var(--code-string); }
+  .result-box .num { color: var(--code-number); }
+
+  .loader {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-strong);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .subhead {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--muted);
+    margin: 1.25rem 0 0.5rem;
+  }
+
+  .card-text + .subhead { margin-top: 0; }
+
+  .code {
+    padding: 0.875rem 1rem;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    white-space: pre;
+    overflow-x: auto;
+    background: var(--inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .endpoints {
+    list-style: none;
+    padding: 0;
+  }
+
+  .endpoint {
+    display: grid;
+    grid-template-columns: 10rem 1fr;
+    gap: 0.25rem 1.25rem;
+    padding: 0.75rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .endpoint:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .endpoint-path {
+    display: block;
+    font-size: 0.875rem;
+  }
+
+  .endpoint-methods {
+    display: block;
+    margin-top: 0.125rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  .endpoint-desc {
+    font-size: 0.9375rem;
+    color: var(--muted);
+  }
+
+  .footer {
+    margin-top: 2rem;
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+
+  .console-toggle {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 20;
+    min-height: 2.5rem;
+    padding: 0 1rem;
+    font: inherit;
+    font-size: 0.875rem;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+    cursor: pointer;
+  }
+
+  .console-panel {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    height: 300px;
+    background: var(--surface);
+    border-top: 1px solid var(--border-strong);
+    transform: translateY(100%);
+    visibility: hidden;
+    transition: transform 0.2s ease-out, visibility 0.2s;
+  }
+
+  .console-panel.open {
+    transform: none;
+    visibility: visible;
+  }
+
+  .console-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .console-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .console-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .console-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    background: var(--inset);
+  }
+
+  .console-line {
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .console-line .ts {
+    margin-right: 0.75rem;
+    color: var(--muted);
+  }
+
+  .console-line.error { color: var(--error); }
+
+  @media (max-width: 560px) {
+    .page { padding-top: 2rem; }
+    .card { padding: 1.25rem; }
+    .endpoint { grid-template-columns: 1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
+    .loader { animation-duration: 2.4s; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="header">
+    <h1 class="title">Origin</h1>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2 class="card-title">Try it</h2>
+
+      <div class="segmented" role="tablist" aria-label="Endpoint">
+        <button class="segment" role="tab" data-mode="city" aria-selected="true">City</button>
+        <button class="segment" role="tab" data-mode="place" aria-selected="false">Place</button>
+        <button class="segment" role="tab" data-mode="road" aria-selected="false">Road</button>
+        <button class="segment" role="tab" data-mode="lookup" aria-selected="false">Lookup</button>
+      </div>
+
+      <label for="coords" class="field-label">Coordinates</label>
+      <div class="input-row">
+        <input id="coords" class="input" type="text" placeholder="38.9820, -76.9370" autocomplete="off" spellcheck="false" value="38.978600, -76.490900" />
+        <button id="btn" class="button-primary">Run</button>
+      </div>
+      <p class="hint" id="hint"></p>
+
+      <div class="result-box" id="result" aria-live="polite">Results appear here.</div>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">Quick start</h2>
+      <p class="card-text">Send a latitude and longitude and get back the city, place, nearest road and region at that point.</p>
+
+      <p class="subhead">Request</p>
+      <pre class="code" data-example>curl "ORIGIN/lookup?lat=38.982&amp;lon=-76.937"</pre>
+
+      <p class="subhead">Response</p>
+      <pre class="code">{
+  "city": "College Park",
+  "place_name": "McKeldin Library",
+  "state": "Maryland",
+  "state_code": "MD",
+  "county": "Prince George's County",
+  "country": "United States",
+  "country_code": "US",
+  "road": "Campus Drive",
+  "road_type": "tertiary",
+  "road_distance_m": 41.7,
+  "lat": 38.982,
+  "lon": -76.937
+}</pre>
+
+      <p class="subhead">Many points at once</p>
+      <pre class="code" data-example>curl -X POST "ORIGIN/lookup/batch" \
+  -H "Content-Type: application/json" \
+  -d '{"points":[{"lat":38.982,"lon":-76.937},{"lat":38.9786,"lon":-76.4909}]}'</pre>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">Endpoints</h2>
+      <p class="card-text">GET takes <code>lat</code> and <code>lon</code> as query parameters; POST takes them as a JSON body.</p>
+      <ul class="endpoints">
+        <li class="endpoint"><div><code class="endpoint-path">/city</code><span class="endpoint-methods">GET · POST</span></div><p class="endpoint-desc">City or town containing the point</p></li>
+        <li class="endpoint"><div><code class="endpoint-path">/place</code><span class="endpoint-methods">GET · POST</span></div><p class="endpoint-desc">Name of the building, point of interest or area at the point</p></li>
+        <li class="endpoint"><div><code class="endpoint-path">/building</code><span class="endpoint-methods">GET · POST</span></div><p class="endpoint-desc">The building at the point, with its address and outline. Optional <code>radius</code> in metres (default 25, max 250)</p></li>
+        <li class="endpoint"><div><code class="endpoint-path">/road</code><span class="endpoint-methods">GET</span></div><p class="endpoint-desc">Nearest named road, its type and distance</p></li>
+        <li class="endpoint"><div><code class="endpoint-path">/lookup</code><span class="endpoint-methods">GET · POST</span></div><p class="endpoint-desc">City, place, road, state, county and country together</p></li>
+        <li class="endpoint"><div><code class="endpoint-path">/cities/batch</code><span class="endpoint-methods">POST</span></div><p class="endpoint-desc">City for up to 100 points</p></li>
+        <li class="endpoint"><div><code class="endpoint-path">/lookup/batch</code><span class="endpoint-methods">POST</span></div><p class="endpoint-desc">Full lookup for up to 100 points</p></li>
+        <li class="endpoint"><div><code class="endpoint-path">/health</code><span class="endpoint-methods">GET</span></div><p class="endpoint-desc">Database connection check</p></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="footer">Map data &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>, ODbL</footer>
+</div>
+
+<button class="console-toggle" id="console-toggle" hidden>Server log</button>
+
+<div class="console-panel" id="console-panel" aria-hidden="true">
+  <div class="console-header">
+    <span class="console-title">Server log</span>
+    <div class="console-actions">
+      <button class="link-button" id="console-clear">Clear</button>
+      <button class="link-button" id="console-close">Close</button>
+    </div>
+  </div>
+  <div class="console-body" id="console-body"></div>
+</div>
+
+<script>
+  const MODES = {
+    city:   { endpoint: '/city',   example: '38.978600, -76.490900' },
+    place:  { endpoint: '/place',  example: '38.981997, -76.937028' },
+    road:   { endpoint: '/road',   example: '39.286600, -76.612700' },
+    lookup: { endpoint: '/lookup', example: '38.981997, -76.937028' },
+  };
+  const HINT_DEFAULT = 'Decimal degrees, degrees-minutes-seconds, or a Google Maps link';
+
+  let mode = 'city';
+  let loading = false;
+
+  const coordsInput = document.getElementById('coords');
+  const hintEl = document.getElementById('hint');
+  const resultEl = document.getElementById('result');
+  const runBtn = document.getElementById('btn');
+
+  function parseDMS(str) {
+    const re = /(\d+)[°]\s*(\d+)?['''′]?\s*(\d+\.?\d*)?["""″]?\s*/;
+    const m = str.match(re);
+    if (!m) return null;
+    const deg = parseFloat(m[1]);
+    const min = m[2] ? parseFloat(m[2]) : 0;
+    const sec = m[3] ? parseFloat(m[3]) : 0;
+    return deg + min / 60 + sec / 3600;
+  }
+
+  // Accepts decimal pairs, DMS, cardinal prefixes or suffixes, and Google Maps "@lat,lon" fragments.
+  function parseCoords(raw) {
+    let s = raw.trim();
+    if (!s) return null;
+
+    // strip google maps @ prefix or "loc:" prefix
+    s = s.replace(/^[@loc:]+/, '');
+
+    // strip trailing zoom levels like ,15z or /data=...
+    s = s.replace(/[,/]\s*\d+\.?\d*z.*$/i, '');
+    s = s.replace(/\/data=.*$/, '');
+
+    // try DMS format: 38°58'55.2"N 76°56'13.3"W
+    const dmsRe = /(\d+[°][^NSEW]*[NSEW])\s*[,]?\s*(\d+[°][^NSEW]*[NSEW])/i;
+    const dmsMatch = s.match(dmsRe);
+    if (dmsMatch) {
+      let latStr = dmsMatch[1], lonStr = dmsMatch[2];
+      let lat = parseDMS(latStr), lon = parseDMS(lonStr);
+      if (lat == null || lon == null) return null;
+      if (/[Ss]/.test(latStr)) lat = -lat;
+      if (/[Ww]/.test(lonStr)) lon = -lon;
+      return { lat, lon };
+    }
+
+    // try decimal with cardinal directions: N38.9820 W76.9370 or 38.9820N 76.9370W
+    const cardRe = /([NSEW])\s*(-?\d+\.?\d+)[°]?|(-?\d+\.?\d+)[°]?\s*([NSEW])/gi;
+    const cardParts = [];
+    let cm;
+    while ((cm = cardRe.exec(s)) !== null) {
+      const dir = (cm[1] || cm[4]).toUpperCase();
+      const val = parseFloat(cm[2] || cm[3]);
+      cardParts.push({ dir, val });
+    }
+    if (cardParts.length === 2) {
+      let lat, lon;
+      for (const p of cardParts) {
+        if (p.dir === 'N') lat = p.val;
+        else if (p.dir === 'S') lat = -p.val;
+        else if (p.dir === 'E') lon = p.val;
+        else if (p.dir === 'W') lon = -p.val;
+      }
+      if (lat != null && lon != null) return { lat, lon };
+    }
+
+    // try plain decimal: two numbers separated by comma, space, or both
+    const decRe = /(-?\d+\.?\d*)\s*[,\s]\s*(-?\d+\.?\d*)/;
+    const decMatch = s.match(decRe);
+    if (decMatch) {
+      const a = parseFloat(decMatch[1]);
+      const b = parseFloat(decMatch[2]);
+      // First number is lat unless it is clearly a longitude and the second is not.
+      if (Math.abs(a) <= 90 && Math.abs(b) <= 180) return { lat: a, lon: b };
+      if (Math.abs(a) > 90 && Math.abs(b) <= 90) return { lat: b, lon: a };
+      return { lat: a, lon: b };
+    }
+
+    return null;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function highlight(obj) {
+    return escHtml(JSON.stringify(obj, null, 2))
+      .replace(/("(\\u[\dA-Fa-f]{4}|\\[^u]|[^"\\])*")(\s*:)?/g, (m, str, _, colon) => {
+        if (colon) return `<span class="key">${str}</span><span class="punct">:</span>`;
+        return `<span class="str">${str}</span>`;
+      })
+      .replace(/\b(-?\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+  }
+
+  function requestUrl(p) {
+    return `${MODES[mode].endpoint}?lat=${encodeURIComponent(p.lat)}&lon=${encodeURIComponent(p.lon)}`;
+  }
+
+  function updateHint() {
+    const value = coordsInput.value.trim();
+    const parsed = value ? parseCoords(value) : null;
+    hintEl.className = value && !parsed ? 'hint bad' : 'hint';
+    if (!value) {
+      hintEl.textContent = HINT_DEFAULT;
+    } else if (!parsed) {
+      hintEl.textContent = 'Could not read those coordinates.';
+    } else {
+      hintEl.innerHTML = `<code>GET ${escHtml(requestUrl(parsed))}</code>`;
+    }
+  }
+
+  function resetResult() {
+    resultEl.className = 'result-box';
+    resultEl.textContent = 'Results appear here.';
+  }
+
+  async function runQuery() {
+    const parsed = parseCoords(coordsInput.value);
+    if (!parsed) {
+      resultEl.className = 'result-box fail';
+      resultEl.textContent = 'Could not read those coordinates.';
+      return;
+    }
+
+    loading = true;
+    runBtn.disabled = true;
+    resultEl.className = 'result-box loading';
+    resultEl.innerHTML = '<div class="loader" role="status" aria-label="Loading"></div>';
+
+    try {
+      const res = await fetch(requestUrl(parsed));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      resultEl.className = 'result-box success';
+      resultEl.innerHTML = highlight(data);
+    } catch (e) {
+      resultEl.className = 'result-box fail';
+      resultEl.textContent = e.message;
+    } finally {
+      loading = false;
+      runBtn.disabled = false;
+    }
+  }
+
+  document.querySelectorAll('.segment').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      mode = tab.dataset.mode;
+      document.querySelectorAll('.segment').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+      if (Object.values(MODES).some((m) => m.example === coordsInput.value.trim())) coordsInput.value = MODES[mode].example;
+      resetResult();
+      updateHint();
+    });
+  });
+
+  coordsInput.addEventListener('input', updateHint);
+  // The pasted text lands in the input after this event.
+  coordsInput.addEventListener('paste', () => {
+    setTimeout(() => {
+      updateHint();
+      if (parseCoords(coordsInput.value)) runQuery();
+    }, 0);
+  });
+  runBtn.addEventListener('click', runQuery);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !loading) runQuery();
+  });
+
+  document.querySelectorAll('[data-example]').forEach((el) => {
+    el.textContent = el.textContent.replace('ORIGIN', location.origin);
+  });
+
+  updateHint();
+
+  const consoleBtn = document.getElementById('console-toggle');
+  const consolePanel = document.getElementById('console-panel');
+  const consoleBody = document.getElementById('console-body');
+  // Request lines already start with "[ISO time]"; the panel shows its own time column.
+  const LEADING_TIMESTAMP = /^\[\d{4}-\d\d-\d\dT[^\]]*\]\s*/;
+
+  function setConsoleOpen(open) {
+    consolePanel.classList.toggle('open', open);
+    consolePanel.setAttribute('aria-hidden', String(!open));
+    consoleBtn.hidden = open;
+    if (open) consoleBody.scrollTop = consoleBody.scrollHeight;
+  }
+
+  function appendLog(entry) {
+    const atBottom = consoleBody.scrollHeight - consoleBody.scrollTop - consoleBody.clientHeight < 60;
+    const line = document.createElement('div');
+    line.className = `console-line ${entry.level}`;
+    const ts = document.createElement('span');
+    ts.className = 'ts';
+    ts.textContent = entry.ts.slice(11, 19);
+    line.append(ts, entry.msg.replace(LEADING_TIMESTAMP, ''));
+    consoleBody.appendChild(line);
+    while (consoleBody.childElementCount > 500) consoleBody.firstElementChild.remove();
+    if (atBottom) consoleBody.scrollTop = consoleBody.scrollHeight;
+  }
+
+  consoleBtn.addEventListener('click', () => setConsoleOpen(true));
+  document.getElementById('console-close').addEventListener('click', () => setConsoleOpen(false));
+  document.getElementById('console-clear').addEventListener('click', () => { consoleBody.textContent = ''; });
+
+  // The log stream is admin-only, so the console appears only after signing in.
+  fetch('/admin/session')
+    .then((res) => res.json())
+    .then((session) => {
+      if (!session.authenticated) return;
+      consoleBtn.hidden = false;
+      const events = new EventSource('/console/stream');
+      events.onmessage = (e) => {
+        try { appendLog(JSON.parse(e.data)); } catch {}
+      };
+    })
+    .catch(() => {});
+</script>
+
+</body>
+</html>

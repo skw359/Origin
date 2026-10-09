@@ -1,0 +1,21 @@
+# Dependencies and build output
+node_modules/
+frontend/dist/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data written by the server
+stats.json
+stats.json.tmp
+*.sync-conflict-*
+
+# Editor, OS and tool files
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
