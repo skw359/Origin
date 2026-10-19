@@ -22,6 +22,10 @@ app.use((req, res, next) => {
   next();
 });
 app.use(cors());
+// /cities/batch has no point cap, so its body limit is raised from the
+// default 100 KB (~2,700 points) to 50 MB (~1.3M points). The parser below
+// skips bodies already parsed here.
+app.use('/cities/batch', express.json({ limit: '50mb' }));
 app.use(express.json());
 
 app.use(express.static(path.join(config.root, 'frontend', 'dist')));

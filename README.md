@@ -7,7 +7,7 @@ The server is a single Express application. It ships with a React dashboard for 
 ## Features
 
 - City, place, building, road and full-context lookups, over GET or POST
-- Batch endpoints for up to 100 points per request
+- Batch endpoints: `/cities/batch` takes any number of points, `/lookup/batch` up to 100
 - Building lookups with footprint GeoJSON and composed street addresses
 - In-process LRU caching of results, keyed to roughly 11 m
 - Admin panel with live requests per second, usage history and a streaming server console
@@ -111,7 +111,7 @@ All endpoints return JSON. Coordinates are WGS84 decimal degrees; `lat` must be 
 | GET, POST | `/building` | The building at the point, with address and footprint |
 | GET | `/road` | Nearest named road |
 | GET, POST | `/lookup` | City, place, road, state, county and country together |
-| POST | `/cities/batch` | City for each of up to 100 points |
+| POST | `/cities/batch` | City for each of any number of points |
 | POST | `/lookup/batch` | Full lookup for each of up to 100 points |
 | GET | `/health` | Database connectivity check |
 
@@ -202,7 +202,7 @@ Returns `{ results: [{ index, lat, lon, ... }] }` in request order. If any point
 | Status | Body |
 | --- | --- |
 | 400 | `{ "error": "lat must be between -90 and 90" }` and similar validation messages, or `{ "error": "Invalid request body" }` for malformed JSON |
-| 413 | `{ "error": "Request body too large" }` for bodies over 100 KB |
+| 413 | `{ "error": "Request body too large" }` for bodies over 100 KB (50 MB for `/cities/batch`) |
 | 500 | `{ "error": "Database query failed" }`; the underlying error is logged on the server only. Queries are cancelled after 15 seconds |
 | 503 | `/health` only: `{ "status": "error", "db": "disconnected" }` |
 
