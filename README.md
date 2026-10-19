@@ -4,6 +4,9 @@ A reverse geocoding API built on an OpenStreetMap database in PostgreSQL/PostGIS
 
 The server is a single Express application. It ships with a React dashboard for trying queries in the browser and a token-protected admin panel with live request statistics and a server log.
 
+<img width="1280" height="655" alt="ihuhiuoihu" src="https://github.com/user-attachments/assets/76479f6d-0e4e-4744-8258-81427b1500b0" />
+
+
 ## Features
 
 - City, place, building, road and full-context lookups, over GET or POST
